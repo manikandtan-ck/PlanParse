@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+  <rect width="1200" height="420" fill="#f8fafc"/>
+  <style>text{font-family:Arial,sans-serif;fill:#172033} .label{font-size:20px;font-weight:700} .small{font-size:16px} .box{fill:white;stroke:#94a3b8;stroke-width:2;rx:16} .accent{fill:#e0f2fe;stroke:#0284c7} .arrow{stroke:#475569;stroke-width:3;marker-end:url(#arrow)}</style>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker></defs>
+  <rect class="box accent" x="480" y="24" width="240" height="62"/><text class="label" x="600" y="62" text-anchor="middle">Construction PDF</text>
+  <rect class="box" x="120" y="142" width="300" height="92"/><text class="label" x="270" y="178" text-anchor="middle">Native PDF vectors</text><text class="small" x="270" y="205" text-anchor="middle">normalize line primitives</text>
+  <rect class="box" x="780" y="142" width="300" height="92"/><text class="label" x="930" y="178" text-anchor="middle">Page raster</text><text class="small" x="930" y="205" text-anchor="middle">structural pixel evidence</text>
+  <path class="arrow" d="M540 86 L300 142"/><path class="arrow" d="M660 86 L900 142"/>
+  <rect class="box accent" x="390" y="282" width="420" height="76"/><text class="label" x="600" y="315" text-anchor="middle">Pair, score, merge, suppress</text><text class="small" x="600" y="340" text-anchor="middle">grounded wall candidates → JSON</text>
+  <path class="arrow" d="M270 234 L470 282"/><path class="arrow" d="M930 234 L730 282"/>
+</svg>

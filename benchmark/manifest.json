@@ -1,0 +1,41 @@
+{
+  "dataset": "Voxel51/FloorPlanCAD",
+  "selection_method": "first five samples after stable filepath sort from the public mirror metadata fallback",
+  "samples": [
+    {
+      "index": 0,
+      "sample_id": "690a547c0420c654cb79d521",
+      "source_filepath": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD/resolve/main/data/0000-0003.png",
+      "local_image": "benchmark/samples/690a547c0420c654cb79d521/image.png",
+      "local_gt_mask": "benchmark/samples/690a547c0420c654cb79d521/gt_wall_mask.png"
+    },
+    {
+      "index": 1,
+      "sample_id": "690a547c0420c654cb79d525",
+      "source_filepath": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD/resolve/main/data/0000-0009.png",
+      "local_image": "benchmark/samples/690a547c0420c654cb79d525/image.png",
+      "local_gt_mask": "benchmark/samples/690a547c0420c654cb79d525/gt_wall_mask.png"
+    },
+    {
+      "index": 2,
+      "sample_id": "690a547c0420c654cb79d529",
+      "source_filepath": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD/resolve/main/data/0000-0044.png",
+      "local_image": "benchmark/samples/690a547c0420c654cb79d529/image.png",
+      "local_gt_mask": "benchmark/samples/690a547c0420c654cb79d529/gt_wall_mask.png"
+    },
+    {
+      "index": 3,
+      "sample_id": "690a547c0420c654cb79d52b",
+      "source_filepath": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD/resolve/main/data/0000-0052.png",
+      "local_image": "benchmark/samples/690a547c0420c654cb79d52b/image.png",
+      "local_gt_mask": "benchmark/samples/690a547c0420c654cb79d52b/gt_wall_mask.png"
+    },
+    {
+      "index": 4,
+      "sample_id": "690a547c0420c654cb79d52e",
+      "source_filepath": "https://huggingface.co/datasets/Voxel51/FloorPlanCAD/resolve/main/data/0000-0060.png",
+      "local_image": "benchmark/samples/690a547c0420c654cb79d52e/image.png",
+      "local_gt_mask": "benchmark/samples/690a547c0420c654cb79d52e/gt_wall_mask.png"
+    }
+  ]
+}

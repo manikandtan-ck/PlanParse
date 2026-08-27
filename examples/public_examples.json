@@ -1,0 +1,52 @@
+{
+  "sources": [
+    {
+      "id": "rinker_a102",
+      "name": "Rinker Hall A102 - Mechanical and First Floor Plans",
+      "source_url": "https://coremng.dcp.ufl.edu/rinkerhall/images/rinker/Drawings/Rinker_009.pdf",
+      "publisher": "University of Florida Rinker School of Construction Management",
+      "local_filename": "rinker_a102.pdf",
+      "pages_tested": [0]
+    },
+    {
+      "id": "rinker_a103",
+      "name": "Rinker Hall A103 - Second and Third Floor Plans",
+      "source_url": "https://coremng.dcp.ufl.edu/rinkerhall/images/rinker/Drawings/Rinker_010.pdf",
+      "publisher": "University of Florida Rinker School of Construction Management",
+      "local_filename": "rinker_a103.pdf",
+      "pages_tested": [0]
+    },
+    {
+      "id": "rinker_a104",
+      "name": "Rinker Hall A104 - Roof Plans",
+      "source_url": "https://coremng.dcp.ufl.edu/rinkerhall/images/rinker/Drawings/Rinker_011.pdf",
+      "publisher": "University of Florida Rinker School of Construction Management",
+      "local_filename": "rinker_a104.pdf",
+      "pages_tested": [0]
+    },
+    {
+      "id": "maricopa_sample",
+      "name": "Maricopa County Sample Floor Plan",
+      "source_url": "https://www.maricopa.gov/DocumentCenter/View/7469/Sample-Floor-Plan-PDF",
+      "publisher": "Maricopa County",
+      "local_filename": "maricopa_sample.pdf",
+      "pages_tested": []
+    },
+    {
+      "id": "buk_acephap",
+      "name": "ACEPHAP at Aminu Kano Teaching Hospital Architectural Drawings",
+      "source_url": "https://acephap.buk.edu.ng/sites/default/files/docs/ARCHITECTURAL%20DRAWING%20FOR%20ACEPHAP%20AT%20AMINU%20KANO%20TEACHING%20HOSPITAL_compressed.pdf",
+      "publisher": "Bayero University Kano",
+      "local_filename": "buk_acephap.pdf",
+      "pages_tested": [7, 8, 9]
+    },
+    {
+      "id": "nsw_ground_floor",
+      "name": "NSW Planning Portal ground-floor plan",
+      "source_url": "https://majorprojects.planningportal.nsw.gov.au/prweb/PRRestService/mp/01/getContent?AttachRef=MP06_0008%2120190628T042343.468+GMT",
+      "publisher": "NSW Government Planning Portal",
+      "local_filename": "nsw_ground_floor.pdf",
+      "pages_tested": [0]
+    }
+  ]
+}
