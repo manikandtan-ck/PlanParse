@@ -1,0 +1,13 @@
+{
+  "source_archive": "/Users/mchiralk/Documents/PlanParse/test-00.tar.xz",
+  "sample_ids": [
+    "0036-0119",
+    "0165-0007",
+    "0493-0070",
+    "0557-2134",
+    "1261-0140"
+  ],
+  "seed": 42,
+  "selection_method": "eligible top-level SVG test IDs sorted, random.Random(42).sample(..., 5), then sorted",
+  "manifest_sha256": "6bacadd5164729690a627b8c227e27b5a48e3ba770e312da5fa8930410f6a4f2"
+}

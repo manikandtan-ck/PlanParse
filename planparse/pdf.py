@@ -42,7 +42,9 @@ def pdf_page_count(file_bytes_or_path) -> int:
     return count
 
 
-def analyze_pdf(file_bytes_or_path, page_idx: int = 0, config: WallDetectionConfig | None = None) -> PdfPageResult:
+def analyze_pdf(file_bytes_or_path, page_idx: int = 0, config: WallDetectionConfig | None = None, mode: str = "hybrid") -> PdfPageResult:
+    if mode not in ("vector", "hybrid"):
+        raise ValueError("mode must be 'vector' or 'hybrid'")
     config = config or WallDetectionConfig()
     doc = pymupdf.open(stream=file_bytes_or_path, filetype="pdf") if isinstance(file_bytes_or_path, (bytes, bytearray)) else pymupdf.open(str(file_bytes_or_path))
     if not 0 <= page_idx < len(doc):
@@ -67,11 +69,17 @@ def analyze_pdf(file_bytes_or_path, page_idx: int = 0, config: WallDetectionConf
     pixel_segments = [s for s in pixel_segments if not (s.p1[1] > image.shape[0] * 0.86 and s.p2[1] > image.shape[0] * 0.86)]
     merged_segments = merge_collinear_segments(pixel_segments, config.merge_angle_deg, config.merge_offset_px, config.merge_gap_px)
     raw_candidates = paired_wall_candidates(merged_segments, config)
-    raster_mask = raster_stages(image, min_component_area=0)["binary"] > 0
+    raster_mask = raster_stages(image, min_component_area=0)["binary"] > 0 if mode == "hybrid" else None
     for wall in raw_candidates:
-        wall.raster_support = _raster_support(raster_mask, wall.centerline, wall.thickness_px)
-        wall.confidence = config.vector_weight * wall.vector_score + config.raster_weight * wall.raster_support
-        wall.source = "hybrid"
+        if mode == "hybrid":
+            wall.raster_support = _raster_support(raster_mask, wall.centerline, wall.thickness_px)
+            wall.confidence = config.vector_weight * wall.vector_score + config.raster_weight * wall.raster_support
+            wall.source = "hybrid"
+        else:
+            # vector_score is already normalized to [0, 1]; keep the existing
+            # 0.60 acceptance threshold for the explicit geometry-only path.
+            wall.confidence = wall.vector_score
+            wall.source = "vector"
     candidates = suppress_duplicate_walls(raw_candidates)
     candidates.sort(key=lambda w: w.confidence, reverse=True)
     walls = [wall for wall in candidates if wall.confidence >= config.acceptance_threshold]

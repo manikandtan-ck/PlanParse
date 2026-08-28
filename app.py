@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -9,8 +10,10 @@ from pathlib import Path
 import cv2
 import streamlit as st
 
-from planparse.pdf import analyze_pdf, create_synthetic_pdf, pdf_page_count
-from planparse.visualization import LIGHT_GRAY, YELLOW, draw_candidate_overlay, draw_vector_overlay, draw_wall_overlay
+from planparse.pdf import create_synthetic_pdf, pdf_page_count
+from planparse.geometry import line_to_points
+from planparse.visualization import GREEN, LIGHT_GRAY, YELLOW, draw_candidate_overlay, draw_vector_overlay, draw_wall_overlay
+from planparse.raster_fallback import analyze_experimental, draw_raster_debug
 
 
 ROOT = Path(__file__).resolve().parent
@@ -28,102 +31,211 @@ def load_pdf(label: str, data: bytes, page: int = 0) -> None:
 def diagnostics_payload(result, elapsed_ms: float) -> dict:
     return {
         "page": {key: result.diagnostics[key] for key in ("page_index", "width_pt", "height_pt", "width_px", "height_px")},
-        "diagnostics": {**result.diagnostics, "processing_time_ms": round(elapsed_ms, 1)},
+        "diagnostics": {key: value for key, value in result.diagnostics.items() if key != "debug_stages"} | {"processing_time_ms": round(elapsed_ms, 1)},
         "walls": [wall.as_dict(index) for index, wall in enumerate(result.walls)],
     }
 
 
+def source_key(data: bytes, label: str) -> str:
+    return f"{label}:{hashlib.sha256(data).hexdigest()}"
+
+
+def fit_display(image, max_width: int = 760, max_height: int = 500):
+    height, width = image.shape[:2]
+    scale = min(1.0, max_width / max(1, width), max_height / max(1, height))
+    if scale == 1.0:
+        return image
+    return cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA)
+
+
+def draw_colored_candidate_overlay(image, candidates, color):
+    out = image.copy()
+    for wall in candidates:
+        if wall.line_a and wall.line_b:
+            cv2.line(out, *line_to_points(wall.line_a), color, 1, cv2.LINE_AA)
+            cv2.line(out, *line_to_points(wall.line_b), color, 1, cv2.LINE_AA)
+        cv2.line(out, *line_to_points(wall.centerline), color, max(2, round(wall.thickness_px / 2)), cv2.LINE_AA)
+    return out
+
+
+def diagnostics_caption(result, elapsed_ms):
+    diagnostics = result.diagnostics
+    mode = diagnostics.get("document_mode", "unknown").upper()
+    if mode == "RASTER-ONLY":
+        return f"{mode} · {diagnostics.get('raster_raw_line_count', 0):,} raster lines · {diagnostics.get('wall_candidate_count', 0):,} candidates · {len(result.walls):,} accepted walls · {elapsed_ms:.0f} ms"
+    return f"{mode} · {diagnostics.get('vector_path_count', 0):,} PDF paths · {diagnostics.get('wall_candidate_count', 0):,} candidates · {len(result.walls):,} accepted walls · {elapsed_ms:.0f} ms"
+
+
 if "pdf_bytes" not in st.session_state:
     load_pdf("Synthetic vector example", create_synthetic_pdf())
+if "source_key" not in st.session_state:
+    st.session_state["source_key"] = source_key(st.session_state["pdf_bytes"], st.session_state["example_name"])
+if "page_number" not in st.session_state:
+    st.session_state["page_number"] = 1
+if "analysis_key" not in st.session_state:
+    st.session_state["analysis_key"] = None
+if "analysis_result" not in st.session_state:
+    st.session_state["analysis_result"] = None
+
 
 demo, benchmark, how = st.tabs(["Demo", "Benchmark", "How it works"])
 
 with demo:
     st.title("PlanParse")
-    st.subheader("Hybrid raster/vector geometry extraction for construction drawings.")
-    st.write("Native PDF geometry provides precise primitives while lightweight raster processing provides an independent view of visible structure.")
+    st.subheader("Find likely walls in architectural PDF drawings.")
+    st.caption("PlanParse reads the drawing and highlights wall-like structures so you can inspect and export the result.")
 
-    examples = [("Synthetic vector example", None, 0)]
-    public_manifest = ROOT / "examples/public_examples.json"
-    if public_manifest.exists():
-        for source in json.loads(public_manifest.read_text())["sources"]:
-            path = ROOT / "examples/pdfs" / source["local_filename"]
-            if path.exists():
-                pages = source.get("pages_tested") or [0]
-                examples.append((source["name"], path, pages[0]))
-    labels = [item[0] for item in examples]
-    current = st.session_state.get("example_name", labels[0])
-    selected_label = st.selectbox("Try a built-in example", labels, index=labels.index(current) if current in labels else 0)
-    if st.button("Load example"):
-        label, path, page = examples[labels.index(selected_label)]
-        load_pdf(label, create_synthetic_pdf() if path is None else path.read_bytes(), page)
-        if hasattr(st, "rerun"):
-            st.rerun()
-        st.experimental_rerun()
+    controls, viewer = st.columns([1, 2], gap="medium")
+    with controls:
+        st.caption("Input")
+        source_mode = st.radio("Source", ["Built-in example", "Upload PDF"], horizontal=True, label_visibility="collapsed", key="source_mode")
+        uploaded = None
+        if source_mode == "Upload PDF":
+            uploaded = st.file_uploader("PDF file", type=["pdf"], help="Upload a PDF drawing to inspect one page at a time.", label_visibility="collapsed")
+            if uploaded is not None and uploaded.size > MAX_UPLOAD_BYTES:
+                st.error("This demo accepts PDFs up to 20 MB.")
+                uploaded = None
 
-    uploaded = st.file_uploader("Or upload a PDF", type=["pdf"], help="One page is processed at a time; maximum size is 20 MB.")
-    if uploaded is not None:
-        if uploaded.size > MAX_UPLOAD_BYTES:
-            st.error("This demo accepts PDFs up to 20 MB.")
+        if source_mode == "Built-in example":
+            current_bytes = create_synthetic_pdf()
+            current_label = "Synthetic vector example"
+        elif uploaded is not None:
+            current_bytes = uploaded.getvalue()
+            current_label = uploaded.name
         else:
-            load_pdf(uploaded.name, uploaded.getvalue())
+            current_bytes = None
+            current_label = ""
 
-    pdf_bytes = st.session_state["pdf_bytes"]
-    try:
-        page_count = pdf_page_count(pdf_bytes)
-    except Exception:
-        st.error("This file could not be opened as a PDF. Try an unencrypted, non-corrupt document.")
-        st.stop()
-    st.caption(f"Source: {st.session_state.get('example_name', 'PDF')} · {page_count} page(s) detected")
-    page_idx = st.number_input("Page", min_value=0, max_value=max(0, page_count - 1), value=min(int(st.session_state.get("example_page", 0)), max(0, page_count - 1)), step=1)
-    st.caption("Only the selected page is processed. Pages render at approximately 150 DPI and are capped at 2,500 px.")
-    opacity = st.slider("Overlay opacity", 0.2, 1.0, 0.75)
-    controls = st.columns(3)
-    show_raw = controls[0].checkbox("Raw PDF vectors")
-    show_candidates = controls[1].checkbox("Wall candidate pairs")
-    show_weak = controls[2].checkbox("Weak candidates")
+        current_key = source_key(current_bytes, current_label) if current_bytes is not None else "no-upload"
+        if current_key != st.session_state.get("source_key"):
+            st.session_state["source_key"] = current_key
+            st.session_state["page_number"] = 1
+            st.session_state["analysis_key"] = None
+            st.session_state["analysis_result"] = None
+            if current_bytes is not None:
+                load_pdf(current_label, current_bytes, 0)
 
-    if st.button("Analyze selected page"):
-        try:
-            start = time.perf_counter()
-            result = analyze_pdf(pdf_bytes, int(page_idx))
-            elapsed_ms = (time.perf_counter() - start) * 1000
-        except Exception as exc:
-            st.error(f"Could not analyze this page: {exc}")
-            st.stop()
-        if result.diagnostics["document_mode"] == "raster-only":
-            st.warning("This page appears raster-dominant; native vector extraction is limited.")
-        overlay = result.image.copy()
-        if show_raw:
-            overlay = draw_vector_overlay(overlay, result.raw_vectors, LIGHT_GRAY, 1)
-        if show_candidates:
-            overlay = draw_candidate_overlay(overlay, result.candidates, show_pairs=True, show_centerlines=True)
-        if show_weak:
-            overlay = draw_candidate_overlay(overlay, result.weak_walls, show_pairs=True, show_centerlines=True)
-        overlay = draw_wall_overlay(overlay, result.walls, opacity)
-        left, right = st.columns(2)
-        with left:
-            st.subheader("Original")
-            st.image(cv2.cvtColor(result.image, cv2.COLOR_BGR2RGB))
-        with right:
-            st.subheader("PlanParse result")
-            st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
-        st.subheader("Page diagnostics")
-        cols = st.columns(5)
-        cols[0].metric("Document mode", result.diagnostics["document_mode"].upper())
-        cols[1].metric("Vector paths", f"{result.diagnostics['vector_path_count']:,}")
-        cols[2].metric("Line segments", f"{result.diagnostics['filtered_line_segment_count']:,}")
-        cols[3].metric("Wall candidates", f"{result.diagnostics['wall_candidate_count']:,}")
-        cols[4].metric("Accepted walls", f"{len(result.walls):,}")
-        st.caption(f"Processing time: {elapsed_ms:.0f} ms · image coverage estimate: {result.diagnostics['image_coverage']:.0%}")
-        st.download_button("Download structured geometry JSON", json.dumps(diagnostics_payload(result, elapsed_ms), indent=2), file_name="planparse_geometry.json", mime="application/json")
-        st.markdown(
-            '<div style="font-size:0.9rem"><b>Overlay</b>&nbsp;&nbsp;'
-            '<span style="color:#00a800">■</span> Detected wall&nbsp;&nbsp;'
-            '<span style="color:#d0aa00">■</span> Candidate wall&nbsp;&nbsp;'
-            '<span style="color:#888888">■</span> Raw PDF vector</div>',
-            unsafe_allow_html=True,
+        page_count = 0
+        if current_bytes is not None:
+            try:
+                page_count = pdf_page_count(current_bytes)
+            except Exception:
+                st.error("This file could not be opened as a PDF.")
+
+        st.caption("Page")
+        if page_count:
+            if st.session_state["page_number"] > page_count:
+                st.session_state["page_number"] = 1
+            selected_page_number = st.selectbox("Page", options=list(range(1, page_count + 1)), key="page_number", label_visibility="collapsed", help="Choose the page to process. Page numbers start at 1.")
+            page_index = selected_page_number - 1
+        else:
+            selected_page_number = None
+            page_index = 0
+
+        st.caption("View")
+        opacity = st.slider("Overlay opacity", 0.2, 1.0, 0.75, help="Adjusts how strongly detected walls are shown over the drawing.")
+
+        detection_mode = st.selectbox(
+            "Detection mode",
+            ["Auto (recommended)", "Hybrid", "Vector", "Raster"],
+            help="Auto: Uses Hybrid detection when the PDF contains drawing lines, otherwise uses Raster detection. Hybrid: Uses PDF drawing lines together with the rendered page image. Vector: Uses drawing lines stored in the PDF only. Raster: Uses the rendered page image only.",
         )
+
+        with st.expander("Developer options"):
+            show_raw = st.checkbox("Show PDF drawing lines", help="Displays the lines read directly from the PDF before wall detection; display only.")
+            show_candidates = st.checkbox("Show wall candidates", help="Displays line pairs that the detector considers possible walls; display only.")
+            show_weak = st.checkbox("Show weak candidates", help="Displays lower-confidence wall candidates; display only.")
+            show_diagnostics = st.checkbox("Diagnostics", help="Shows intermediate counts and processing details useful for debugging; display only.")
+            show_raster_mask = st.checkbox("Show image mask", help="Displays the foreground mask used by raster fallback; display only.")
+            show_raster_response = st.checkbox("Show horizontal/vertical response", help="Displays directional morphology responses used to find raster lines; display only.")
+            show_raster_lines = st.checkbox("Show raster line segments", help="Displays raw horizontal and vertical raster line segments; display only.")
+            show_raster_pairs = st.checkbox("Show raster wall candidates", help="Displays raster-derived parallel wall pairs before acceptance; display only.")
+
+        st.caption("Export")
+        analyze_clicked = st.button("Analyze page", use_container_width=True, disabled=current_bytes is None)
+        analysis_key = (current_key, page_index, detection_mode)
+        if current_bytes is not None and (analyze_clicked or st.session_state.get("analysis_key") != analysis_key):
+            try:
+                start = time.perf_counter()
+                result, mode_used = analyze_experimental(current_bytes, page_index, detection_mode)
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                st.session_state["analysis_result"] = (result, elapsed_ms)
+                st.session_state["analysis_mode"] = mode_used
+                st.session_state["analysis_key"] = analysis_key
+            except Exception as exc:
+                st.session_state["analysis_result"] = None
+                st.error(f"Could not analyze this page: {exc}")
+
+        stored = st.session_state.get("analysis_result")
+        if stored is not None and st.session_state.get("analysis_key") == (current_key, page_index, detection_mode):
+            result, elapsed_ms = stored
+            st.download_button("Download JSON", json.dumps(diagnostics_payload(result, elapsed_ms), indent=2), file_name="planparse_geometry.json", mime="application/json", use_container_width=True)
+
+    with viewer:
+        stored = st.session_state.get("analysis_result")
+        if current_bytes is None:
+            st.info("Upload a PDF to preview wall detection.")
+        elif stored is None or st.session_state.get("analysis_key") != (current_key, page_index, detection_mode):
+            st.info("Choose a page and click Analyze page to preview wall detection.")
+        else:
+            result, elapsed_ms = stored
+            overlay = result.image.copy()
+            mode_used = st.session_state.get("analysis_mode", "Hybrid")
+            if show_raw and mode_used != "Raster":
+                overlay = draw_vector_overlay(overlay, result.raw_vectors, LIGHT_GRAY, 1)
+            if show_candidates and mode_used != "Raster":
+                overlay = draw_colored_candidate_overlay(overlay, result.candidates, (0, 165, 255))
+            if show_weak and mode_used != "Raster":
+                overlay = draw_candidate_overlay(overlay, result.weak_walls, show_pairs=True, show_centerlines=True)
+            overlay = draw_wall_overlay(overlay, result.walls, opacity)
+            original_display = fit_display(cv2.cvtColor(result.image, cv2.COLOR_BGR2RGB))
+            result_display = fit_display(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB), max_width=original_display.shape[1], max_height=original_display.shape[0])
+            left, right = st.columns(2, gap="small")
+            with left:
+                st.caption("Original")
+                st.image(original_display, use_container_width=True)
+            with right:
+                st.caption("Detected walls")
+                st.image(result_display, use_container_width=True)
+            status = "Image-based fallback — works best on clean floor plans." if mode_used == "Raster" else ("Uses native PDF drawing lines with raster support." if mode_used == "Hybrid" else "Uses native PDF drawing lines only.")
+            st.caption(f"Mode used: {mode_used} · detected walls: {len(result.walls)} · {status}")
+            if not result.walls:
+                st.info("No wall-like structures detected.")
+            if show_diagnostics:
+                st.caption(diagnostics_caption(result, elapsed_ms))
+            if mode_used == "Raster" and any((show_raster_mask, show_raster_response, show_raster_lines, show_raster_pairs)):
+                debug = draw_raster_debug(result)
+                if show_raster_mask:
+                    st.image(debug["foreground_mask"], caption="Foreground mask", clamp=True, use_container_width=True)
+                if show_raster_response:
+                    response_left, response_right = st.columns(2, gap="small")
+                    with response_left:
+                        st.image(debug["horizontal_response"], caption="Horizontal response", clamp=True, use_container_width=True)
+                    with response_right:
+                        st.image(debug["vertical_response"], caption="Vertical response", clamp=True, use_container_width=True)
+                if show_raster_lines:
+                    st.image(cv2.cvtColor(debug["raw_raster_lines"], cv2.COLOR_BGR2RGB), caption="Raw raster line segments", use_container_width=True)
+                if show_raster_pairs:
+                    st.image(cv2.cvtColor(debug["raster_wall_pairs"], cv2.COLOR_BGR2RGB), caption="Raster wall candidates", use_container_width=True)
+            legend_items = [("Detected wall", GREEN)]
+            if show_candidates and mode_used != "Raster":
+                legend_items.append(("Wall candidate", (0, 165, 255)))
+            if show_weak and mode_used != "Raster":
+                legend_items.append(("Weak candidate", YELLOW))
+            if show_raw and mode_used != "Raster":
+                legend_items.append(("PDF drawing line", LIGHT_GRAY))
+            if mode_used == "Raster" and show_raster_lines:
+                legend_items.append(("Raster line segment", (0, 165, 255)))
+            if mode_used == "Raster" and show_raster_pairs:
+                legend_items.append(("Raster wall candidate", (0, 165, 255)))
+            legend_html = "".join(
+                f'<span style="white-space:nowrap"><span style="color:rgb({color[2]},{color[1]},{color[0]})">■</span> {label}</span>'
+                for label, color in legend_items
+            )
+            st.markdown(
+                f'<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:0.82rem">{legend_html}</div>',
+                unsafe_allow_html=True,
+            )
 
 with benchmark:
     st.title("FloorPlanCAD microbenchmark")
