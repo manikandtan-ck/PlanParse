@@ -114,7 +114,7 @@ Hybrid currently fails when non-wall CAD geometry such as dimensions, borders an
 This test contains only five drawings and should be treated as a sanity check rather than a broad accuracy estimate.
 
 
-### Raster method comparison
+### Raster mode - Algorithm comparison
 
 This separate five-drawing benchmark compares image-based wall detection methods using FloorPlanCAD wall masks. It does not evaluate Vector or Hybrid mode.
 
@@ -129,9 +129,9 @@ This separate five-drawing benchmark compares image-based wall detection methods
 
 The classical raster baseline performed best on this fixed raster benchmark and does not require a neural-network runtime dependency.
 
-### Raster fallback
+### Raster mode - Issues
 
-The raster-only fallback was also tested separately on clean and realistic rasterized plans.
+The raster-only modee was also tested separately on clean and realistic rasterized plans.
 
 - A simple clean raster floor plan produced recognizable major walls.
 - Five realistic rasterized construction pages produced many false positives from dimensions, borders, title blocks and other line structures.
@@ -149,7 +149,7 @@ Several alternatives were tested before freezing the current detector.
 | **Stroke width / connectivity / wall-spacing rules** | Weak separation | Wall and non-wall drawing lines had heavily overlapping geometric distributions. Simple global thresholds were unreliable. | Use richer local context or learned graph features rather than more fixed thresholds. |
 | **Random Forest candidate filter** | Improved some drawings but failed to generalize reliably | On an independent 25-drawing test it produced no output on 16/25 samples and degraded more samples than it improved. | Train on a larger and more varied set, or use a model that reasons over groups of connected drawing elements. |
 
-These experiments are kept as development results rather than runtime dependencies.
+These experiments are kept as development logs and are not runtime dependencies.
 
 ## Failure case
 
@@ -190,9 +190,12 @@ streamlit run app.py
 
 ## Data
 
+Train Data
 The fixed raster benchmark is reconstructed from the [Voxel51 FloorPlanCAD mirror](https://huggingface.co/datasets/Voxel51/FloorPlanCAD). Downloaded samples are not included in the repository.
 
 The vector-aware benchmark uses original FloorPlanCAD SVG drawings converted to vector-preserving PDFs.
+
+5 - image Test Data
 
 Public construction drawing sources and attribution are listed in [`examples/public_examples.json`](examples/public_examples.json).
 
