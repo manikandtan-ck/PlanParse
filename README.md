@@ -42,7 +42,6 @@ PlanParse supports three detection methods.
                           export results
 ```
 
-![PlanParse PDF-to-wall extraction pipeline.](assets/pipeline.svg)
 
 ### Vector detection
 
