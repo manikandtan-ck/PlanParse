@@ -4,7 +4,7 @@ PlanParse finds likely walls in architectural PDF drawings and exports their loc
 
 It works best when the PDF contains drawing lines that can be read directly from the PDF, but it can also attempt basic wall detection from clean image-based plans.
 
-[**Live demo**](https://planparse-wall-extraction.streamlit.app/)
+## [▶ Live Demo (Streamlit app)](https://planparse-wall-extraction.streamlit.app/)
 
 ![Ten FloorPlanCAD drawings with PlanParse wall predictions highlighted in green.](assets/hero.png)
 
@@ -12,9 +12,9 @@ It works best when the PDF contains drawing lines that can be read directly from
 
 - Reads drawing lines stored directly in PDF files
 - Uses the rendered page image as an additional wall signal
-- Can detect wall-like structures from the rendered page when drawing lines are not available
+- Can detect wall-like structures from rendered pages when drawing lines are not available
 - Joins broken line segments and removes duplicate detections
-- Lets you view the lines and wall candidates found during detection
+- Lets you view lines and wall candidates found during detection
 - Exports detected walls as JSON
 - Includes an interactive Streamlit demo
 
@@ -42,9 +42,11 @@ PlanParse supports three detection methods.
                           export results
 ```
 
+![PlanParse PDF-to-wall extraction pipeline.](assets/pipeline.svg)
+
 ### Vector detection
 
-Vector mode uses drawing lines stored directly in the PDF.
+Vector mode reads native PDF drawing geometry. It is useful for digitally generated PDFs and has high wall recall, but non-wall line structures can also be included. Method is:
 
 1. Read straight line segments from the PDF.
 2. Join nearby segments that belong to the same line.
@@ -53,7 +55,7 @@ Vector mode uses drawing lines stored directly in the PDF.
 
 ### Raster detection
 
-Raster mode works only from the rendered page image.
+Raster mode renders the page and uses image-space processing. It is useful when usable native vector information is absent, but it is more sensitive to visual clutter.  Method is:
 
 1. Render the page as an image.
 2. Separate drawing marks from the background.
@@ -61,11 +63,9 @@ Raster mode works only from the rendered page image.
 4. Convert those structures into line segments.
 5. Look for parallel line pairs and score them as possible walls.
 
-Raster mode works best on clean, mostly horizontal/vertical floor plans and can produce many false positives on complex drawings.
-
 ### Hybrid detection
 
-Hybrid mode combines both sources. It first finds wall candidates from the PDF drawing lines, then uses the rendered page image to check how strongly each candidate is supported before producing the final result.
+Hybrid mode combines native PDF geometry with raster evidence. It is the current recommended/default mode and had the highest replicated median F1@0.5% across the three frozen compatible evaluation cohorts.
 
 ## Detection modes
 
@@ -99,57 +99,29 @@ Detected walls are highlighted in green.
 
 ### PDF detection modes
 
-A small five-drawing test uses original FloorPlanCAD vector drawings converted to vector-preserving PDFs. The same drawings are tested with all three detection methods.
+The current benchmark uses three pairwise-disjoint frozen cohorts. Vector and Hybrid span all three cohorts; Raster spans two.
 
-| Method | IoU | Precision | Recall | F1@3px | Chamfer ↓ |
-|---|---:|---:|---:|---:|---:|
-| **Vector** | 0.015 | 0.015 | **0.761** | 0.148 | 244.75 |
-| **Raster** | **0.025** | **0.026** | 0.612 | **0.229** | **233.76** |
-| **Hybrid** | 0.024 | 0.024 | 0.522 | 0.194 | 244.21 |
+| Mode | Frozen drawings | Median F1@0.5% |
+|---|---:|---:|
+| **Vector** | 150 | 0.3566 |
+| **Raster** | 100 | 0.2855 |
+| **Hybrid** | 150 | 0.3820 |
 
-Raster performed best on this small test set. Vector detection recovered more wall regions but also produced many more false positives. Hybrid reduced some of those false positives, but did not outperform Raster overall.
+Hybrid had the highest median F1@0.5% in all three compatible cohorts. Vector retained greater recall. The [consolidated benchmark details](benchmark/README.md) include the full metric table and cohort comparisons.
 
-Hybrid currently fails when non-wall CAD geometry such as dimensions, borders and annotation lines looks similar to wall boundaries; a likely next step is to add stronger semantic or graph-based filtering so connected drawing elements can be classified in context.
-
-This test contains only five drawings and should be treated as a sanity check rather than a broad accuracy estimate.
-
-
-### Raster mode - Algorithm comparison
-
-This separate five-drawing benchmark compares image-based wall detection methods using FloorPlanCAD wall masks. It does not evaluate Vector or Hybrid mode.
-
-| Method | IoU | F1@3px | Chamfer ↓ |
-|---|---:|---:|---:|
-| **Classical raster baseline** | **0.182** | **0.477** | 99.28 |
-| Original CubiCasa | 0.113 | 0.391 | **88.83** |
-| CubiCasa partial fine-tune | 0.117 | 0.408 | 82.20 |
-| Binary 512 px fine-tune | 0.000 | 0.000 | 1000.00 |
-
-![Five fixed FloorPlanCAD samples with green PlanParse wall predictions and per-sample F1@3px values.](assets/benchmark_montage.png)
-
-The classical raster baseline performed best on this fixed raster benchmark and does not require a neural-network runtime dependency.
+![Replicated PDF-mode benchmark across three frozen cohorts.](assets/benchmark_replication.png)
 
 ### Raster mode - Issues
 
-The raster-only modee was also tested separately on clean and realistic rasterized plans.
-
-- A simple clean raster floor plan produced recognizable major walls.
-- Five realistic rasterized construction pages produced many false positives from dimensions, borders, title blocks and other line structures.
-- Raster mode is therefore most useful on clean, simple image-based plans.
+Raster-only detection is most useful on clean, simple image-based plans. Dimensions, borders, title blocks and other line structures can create false positives on realistic construction sheets.
 
 ## Experiments that were not adopted
 
-Several alternatives were tested before freezing the current detector.
+* CubiCasa fine-tuning — Adapted CubiCasa toward wall-only prediction. The direct fine-tunes did not improve the pretrained baseline; a dedicated binary wall decoder improved semantic accuracy but remained well below the PDF geometry methods.
+* Semantic candidate filtering — Used the CubiCasa variants to reject geometric candidates that did not look like walls in the rendered drawing. Fixed score thresholds were unstable across datasets, and ranking candidates relative to others on the same page did not improve fresh held-out data.
+* Geometric context filtering — Scored candidates using simple adjacency and perpendicular-neighbor relationships. The added context did not produce a repeatable gain over the existing geometry pipeline.
 
-| Experiment | Result | Why it was not used | Possible next step |
-|---|---|---|---|
-| **Pretrained CubiCasa** | F1@3px 0.391 | The model transferred poorly from its original training data (CubiCasa5K) to FloorPlanCAD line drawings. | Fine-tune a segmentation model on a larger matched wall dataset. |
-| **Partial CubiCasa fine-tune** | F1@3px 0.408 | Improved over the pretrained model but remained below the classical raster baseline. | Unfreeze more of the network and train on substantially more matched data. |
-| **Binary 512 px wall head** | F1@3px 0.000 | The small binary head did not learn a useful wall representation under the limited training setup. | Train a dedicated segmentation network end-to-end rather than adapting a very small head. |
-| **Stroke width / connectivity / wall-spacing rules** | Weak separation | Wall and non-wall drawing lines had heavily overlapping geometric distributions. Simple global thresholds were unreliable. | Use richer local context or learned graph features rather than more fixed thresholds. |
-| **Random Forest candidate filter** | Improved some drawings but failed to generalize reliably | On an independent 25-drawing test it produced no output on 16/25 samples and degraded more samples than it improved. | Train on a larger and more varied set, or use a model that reasons over groups of connected drawing elements. |
-
-These experiments are kept as development logs and are not runtime dependencies.
+These alternatives remain research references rather than runtime modes; see the [experiment notes](experiments/README.md) for more info.
 
 ## Failure case
 
@@ -159,12 +131,15 @@ Some drawings produce little or no useful wall response.
 
 ## Limitations
 
-- Dimension lines, tables and other parallel drawing elements can be mistaken for walls.
-- Raster-only detection is reliable mainly on clean, simple plans.
-- Curved and filled wall styles are only partly supported.
-- Complex sheets with several plans, schedules or detail regions are not fully separated automatically.
-- Wall detection is geometric rather than semantic; the system does not understand building elements in the way a BIM model does.
-- Current independent test sets are small and should be treated as sanity checks rather than broad accuracy estimates.
+Recurring failure classes include:
+
+- parallel non-wall geometry, including dimensions and borders
+- title blocks and annotations/text
+- furniture and symbols
+- thin or fragmented walls
+- complex curves and mixed sheets with several drawing regions
+
+Wall detection is geometric rather than semantic; the system does not understand building elements in the way a BIM model does. Raster-only detection is mainly reliable on clean, simple plans.
 
 ## Output
 
@@ -190,12 +165,9 @@ streamlit run app.py
 
 ## Data
 
-Train Data
 The fixed raster benchmark is reconstructed from the [Voxel51 FloorPlanCAD mirror](https://huggingface.co/datasets/Voxel51/FloorPlanCAD). Downloaded samples are not included in the repository.
 
 The vector-aware benchmark uses original FloorPlanCAD SVG drawings converted to vector-preserving PDFs.
-
-5 - image Test Data
 
 Public construction drawing sources and attribution are listed in [`examples/public_examples.json`](examples/public_examples.json).
 
