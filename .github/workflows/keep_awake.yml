@@ -13,16 +13,18 @@ jobs:
     - name: Checkout repository code
       uses: actions/checkout@v4
 
+    # 1. Corrected to the official setup-python action
     - name: Set up Python
-      uses: actions/human-python@v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
+    # 2. Installed system dependencies required by Chromium
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install playwright
-        playwright install chromium
+        npx playwright install --with-deps chromium
 
     - name: Run the ping script
       run: python keep_awake.py
